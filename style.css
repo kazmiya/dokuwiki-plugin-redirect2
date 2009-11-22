@@ -1,0 +1,19 @@
+/* plugin:redirect2 */
+
+div.dokuwiki div.redirect2_redirected {
+    background-image: url(images/bullet_go.png);
+    padding-left: 2em;
+}
+
+div.dokuwiki span.redirect2_desc {
+    color: __text_neu__;
+    font-size: 90%;
+}
+
+div.dokuwiki pre.redirect2_example {
+    margin: 0.5em 0.5em 0.5em 0;
+}
+
+#config__manager td textarea#config___plugin____redirect2____redirect_rules {
+    height: 12em;
+}

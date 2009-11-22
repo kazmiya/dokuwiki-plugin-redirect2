@@ -1,0 +1,42 @@
+
+Redirect2 Plugin for DokuWiki
+=============================
+
+This plugin provides various types of page redirections based 
+on a central redirection list.
+
+All documentation for this plugin is available online at:
+
+  * http://www.dokuwiki.org/plugin:redirect2
+
+Compatibility
+-------------
+
+This plugin is compatible with:
+
+  * dokuwiki-2009-02-14
+  * dokuwiki-2008-05-05 (*1)
+  * dokuwiki-2007-06-26 (*1)
+  * dokuwiki-2006-11-06 (*1) (*2)
+
+  (*1) Restriction: No "redirected from" messages
+  (*2) Restriction: Only one redirect rule setting available
+
+Thanks
+------
+
+  * This plugin is based on Andreas Gohr's Redirect Plugin for 
+    DokuWiki. Thanks to Andi for his work.
+    http://www.dokuwiki.org/plugin:redirect
+
+  * Image files used in this plugin are from Mark James' Silk 
+    icon set. Thanks!
+    http://www.famfamfam.com/lab/icons/silk/
+
+  * Language files for "redirected from" messages are based on 
+    MediaWiki's translation files. Thanks!
+    http://svn.wikimedia.org/viewvc/mediawiki/trunk/phase3/languages/messages/
+
+-- 
+(c) 2009 by Kazutaka Miyasaka <kazmiya@gmail.com>
+See COPYING for license info.
