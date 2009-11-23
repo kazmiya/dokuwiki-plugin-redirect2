@@ -22,9 +22,9 @@ class action_plugin_redirect2 extends DokuWiki_Action_Plugin {
         return array(
             'author' => 'Kazutaka Miyasaka',
             'email'  => 'kazmiya@gmail.com',
-            'date'   => '2009-11-22',
+            'date'   => '2009-11-23',
             'name'   => 'Redirect2 Plugin',
-            'desc'   => 'Provides various types of page redirections based on a central redirection list.',
+            'desc'   => 'Provides various types of page redirections based on a central redirection list',
             'url'    => 'http://www.dokuwiki.org/plugin:redirect2'
         );
     }
@@ -40,37 +40,42 @@ class action_plugin_redirect2 extends DokuWiki_Action_Plugin {
      * Handles redirections
      */
     function handleRedirect(&$event, $param) {
-        global $ID;
         global $ACT;
+        global $INFO;
 
         if (headers_sent()) return;
         if ($ACT != 'show') return;
         if ($_REQUEST['noredirect']) return;
         if (!$rules = $this->getRedirectRules()) return;
 
+        $id = $INFO['id'];
+
         // page redirection
-        if ($to = $rules['page'][$ID]) {
-            if ($to === '[NOREDIRECT]') return;
+        if (array_key_exists($id, $rules['page'])) {
+            $to = $rules['page'][$id];
+            if (strpos($to, '[noredirect]') !== false) return;
             $this->redirectPage($to);
         }
 
         if (!$rules['ns']) return;
 
         // sub namespace redirection (longest match)
-        $ns = getNS($ID);
+        $ns = $INFO['namespace'];
         while ($ns !== false) { // you may have namespaces like "0"
             if (array_key_exists($ns, $rules['ns'])) {
-                if ($rules['ns'][$ns] === '[NOREDIRECT]') return;
-                $relpath = substr($ID, strlen($ns.':'));
-                $this->redirectNS($rules['ns'][$ns], $relpath);
+                $to = $rules['ns'][$ns];
+                if (strpos($to, '[noredirect]') !== false) return;
+                $relpath = substr($id, strlen($ns.':'));
+                $this->redirectNS($to, $relpath);
             }
             $ns = getNS($ns);
         }
 
         // root namespace redirection
         if (array_key_exists('*', $rules['ns'])) {
-            if ($rules['ns']['*'] === '[NOREDIRECT]') return;
-            $this->redirectNS($rules['ns']['*'], $ID);
+            $to = $rules['ns']['*'];
+            if (strpos($to, '[noredirect]') !== false) return;
+            $this->redirectNS($to, $id);
         }
     }
 
@@ -79,8 +84,6 @@ class action_plugin_redirect2 extends DokuWiki_Action_Plugin {
      * (based on confToHash() and linesToHash(), inc/confutils.php)
      */
     function getRedirectRules() {
-        global $conf;
-
         $lines = preg_split('/\r\n|\r|\n/', $this->getConf('redirect_rules'));
         if (!$lines) return false;
 
@@ -97,14 +100,9 @@ class action_plugin_redirect2 extends DokuWiki_Action_Plugin {
             if (!isset($to)) continue;
 
             // build from-page => to-page/url array with some adjustments
-            $from = utf8_strtolower($from);
-            if ($conf['useslash'])          $from = strtr($from, '/', ':');
-            if ($from === ':')              $from = $conf['start'];
-            if (strpos($from, ':') === 0)   $from = substr($from, 1);
+            $from = $this->cleanIDSimple($from);
             if (!preg_match($this->regexp_external, $to)) {
-                if ($conf['useslash'])      $to   = strtr($to, '/', ':');
-                if ($to === ':')            $to   = $conf['start'];
-                if (strpos($to, ':') === 0) $to   = substr($to, 1);
+                $to = $this->cleanIDSimple($to);
             }
             $rules['page'][$from] = $to;
 
@@ -119,84 +117,95 @@ class action_plugin_redirect2 extends DokuWiki_Action_Plugin {
     }
 
     /**
+     * Cleans given pageID-like strings by simple way
+     */
+    function cleanIDSimple($id) {
+        global $conf;
+
+        $id = utf8_strtolower($id);
+        if ($conf['useslash'])      $id = strtr($id, '/', ':');
+        if ($id === ':')            $id = $conf['start'];
+        if (strpos($id, ':') === 0) $id = substr($to, 1);
+        return $id;
+    }
+
+    /**
      * Handles page redirections
      */
     function redirectPage($to) {
-        global $conf;
-
-        // redirect type
-        if (strpos($to, '[PERMANENT]') !== false) {
+        // handle redirect type
+        if (strpos($to, '[permanent]') !== false) {
             $permanent = 1;
-            $to = trim(str_replace('[PERMANENT]', '', $to));
+            $to = trim(str_replace('[permanent]', '', $to));
         }
 
-        if (preg_match($this->regexp_external, $to)) {
-            $this->redirectTo($to, $permanent);
-        } else {
-            $this->redirectTo(wl($to, '', true), $permanent, 'internal');
-        }
+        // redirect
+        $this->redirectTo($to, $permanent);
     }
 
     /**
      * Handles namespace redirections
      */
     function redirectNS($to, $relpath) {
-        global $conf;
-
-        // redirect type
-        if (strpos($to, '[PERMANENT]') !== false) {
+        // handle redirect type
+        if (strpos($to, '[permanent]') !== false) {
             $permanent = 1;
-            $to = trim(str_replace('[PERMANENT]', '', $to));
+            $to = trim(str_replace('[permanent]', '', $to));
         }
 
         // if the last letter of $to is "*", replace it with relative path
-        $to = preg_replace('/\*$/', '[RELPATH]', $to);
+        $to = preg_replace('/\*$/', '[path]', $to);
 
-        if (preg_match($this->regexp_external, $to)) {
-            $path_elem = array_map('urlencode', explode(':', $relpath));
-        } else {
-            $path_elem = explode(':', $relpath);
-        }
+        // replace
+        $path_elem = preg_match($this->regexp_external, $to)
+            ? array_map('urlencode', explode(':', $relpath))
+            : explode(':', $relpath);
+        $repl = $this->getReplacementVariables($path_elem);
+        $to = str_replace(array_keys($repl), array_values($repl), $to);
 
-        // set replacement variables
-        $vars = array();
-        $vars['[PAGE]']     = array_pop($path_elem);
+        // redirect
+        $this->redirectTo($to, $permanent);
+    }
+
+    /**
+     * Builds a hash of replacement variables
+     */
+    function getReplacementVariables($path_elem) {
+        global $conf;
+
+        $repl = array();
+
+        $repl['[page]'] = array_pop($path_elem);
         if (count($path_elem)) {
-            $vars['[NSONLY:]'] = implode(':', $path_elem);
-            $vars['[NSONLY/]'] = implode('/', $path_elem);
-            $vars['[NS:]']     = $vars['[NSONLY:]'].':';
-            $vars['[NS/]']     = $vars['[NSONLY/]'].'/';
+            $repl['[nsonly_colon]'] = implode(':', $path_elem);
+            $repl['[nsonly_slash]'] = implode('/', $path_elem);
+            $repl['[ns_colon]']     = $repl['[nsonly_colon]'].':';
+            $repl['[ns_slash]']     = $repl['[nsonly_slash]'].'/';
         } else {
-            $vars['[NSONLY:]'] = '';
-            $vars['[NSONLY/]'] = '';
-            $vars['[NS:]']     = '';
-            $vars['[NS/]']     = '';
+            $repl['[nsonly_colon]'] = '';
+            $repl['[nsonly_slash]'] = '';
+            $repl['[ns_colon]']     = '';
+            $repl['[ns_slash]']     = '';
         }
-        $vars['[NSONLY]']   = $conf['useslash'] ? $vars['[NSONLY/]'] : $vars['[NSONLY:]'];
-        $vars['[NS]']       = $conf['useslash'] ? $vars['[NS/]'] : $vars['[NS:]'];
-        $vars['[RELPATH:]'] = $vars['[NS:]'].$vars['[PAGE]'];
-        $vars['[RELPATH/]'] = $vars['[NS/]'].$vars['[PAGE]'];
-        $vars['[RELPATH]']  = $vars['[NS]'].$vars['[PAGE]'];
+        $repl['[nsonly]'] = $conf['useslash'] ? $repl['[nsonly_slash]'] : $repl['[nsonly_colon]'];
+        $repl['[ns]']     = $conf['useslash'] ? $repl['[ns_slash]'] : $repl['[ns_colon]'];
+        $repl['[path_colon]']  = $repl['[ns_colon]'].$repl['[page]'];
+        $repl['[path_slash]']  = $repl['[ns_slash]'].$repl['[page]'];
+        $repl['[path]']        = $repl['[ns]'].$repl['[page]'];
 
-        // replace variables and redirect
-        if (preg_match($this->regexp_external, $to)) {
-            $to = str_replace(array_keys($vars), array_values($vars), $to);
-            $this->redirectTo($to, $permanent);
-        } else {
-            $vars['[NS]']      = $vars['[NS:]'];
-            $vars['[RELPATH]'] = $vars['[RELPATH:]'];
-            $to = str_replace(array_keys($vars), array_values($vars), $to);
-            $this->redirectTo(wl($to, '', true), $permanent, 'internal');
-        }
+        return $repl;
     }
 
     /**
      * Sends HTTP redirect with nice message
      */
-    function redirectTo($to, $permanent = 0, $internal = 0) {
-        global $ID;
+    function redirectTo($to, $permanent = 0) {
+        global $INFO;
         global $MSG;
 
+        $internal = !preg_match($this->regexp_external, $to);
+
+        if ($internal) $to = wl($to, '', true);
         if ($internal && $this->getConf('show_messages')) {
             @session_start();
             if (isset($MSG) && count($MSG)) {
@@ -206,11 +215,10 @@ class action_plugin_redirect2 extends DokuWiki_Action_Plugin {
                 'lvl' => 'redirect2_redirected success',
                 'msg' => sprintf(
                     hsc($this->getLang('redirected_from')),
-                    '<a href="'.wl($ID, 'noredirect=1', true).'" rel="nofollow">'.$ID.'</a>'
+                    '<a href="'.wl($INFO['id'], 'noredirect=1', true).'" rel="nofollow">'.$INFO['id'].'</a>'
                 )
             );
         }
-
         session_write_close();
 
         // send redirect header and exit
